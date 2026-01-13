@@ -1,0 +1,5 @@
+{
+  "name": "台灣食品法規查詢系統",
+  "description": "專業的台灣食品安全法規查詢工具，連結衛福部食藥署 (TFDA) 最新標準，包含農藥殘留、重金屬及微生物限量標準。",
+  "requestFramePermissions": []
+}
