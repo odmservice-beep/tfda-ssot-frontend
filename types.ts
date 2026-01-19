@@ -5,11 +5,10 @@ export interface RegulationResult {
   foodItem: string;
   category: string;
   summary: string;
-  isFromLocalPdf?: boolean;
-  pesticides: { item: string; limit: string; note?: string; }[];
-  heavyMetals: { item: string; limit: string; note?: string; }[];
-  others: { item: string; limit: string; note?: string; }[];
-  sources: { title: string; url: string; sourceType?: DocSource; }[];
+  sources: { title: string; url: string; sourceType?: DocSource; snippet?: string }[];
+  pesticides: { item: string; limit: string; note?: string }[];
+  heavyMetals: { item: string; limit: string; note?: string }[];
+  others: { item: string; limit: string; note?: string }[];
 }
 
 export interface LocalDoc {
@@ -20,26 +19,16 @@ export interface LocalDoc {
   source: DocSource;
   mimeType: string;
   fingerprint: string;
+  relativePath?: string;
+  size: number;
 }
 
-export type AuthStatus = 
-  | 'unauthorized' 
-  | 'requesting' 
-  | 'authorized' 
-  | 'error' 
-  | 'preview_blocked';
-
-export interface SyncStatus {
-  phase: 'idle' | 'processing' | 'done' | 'error';
+export interface SyncResult {
+  success: boolean;
   message: string;
-  progress: { current: number; total: number };
-}
-
-export interface KBMetadata {
-  rootFolderId: string;
   lastSyncAt: number;
-  fingerprint: string;
-  stats: { total: number; success: number; failed: number; skipped: number; };
+  fileCount: number;
+  files: string[];
 }
 
 export type SearchSourceMode = 'local' | 'drive' | 'both';
@@ -49,7 +38,17 @@ export interface FileProcessingDetail {
   name: string;
   mimeType: string;
   size: number;
-  status: 'processing' | 'success' | 'failed' | 'skipped';
+  status: 'processing' | 'success' | 'failed' | 'skipped' | 'duplicate';
   reason?: string;
+  // Added errorStack property to hold error stack traces for debugging in LocalUploader.tsx
+  errorStack?: string;
   contentLength?: number;
+  relativePath?: string;
+  timestamp: number;
+}
+
+export interface BrowserCapabilities {
+  fileSystemAccess: boolean;
+  webkitDirectory: boolean;
+  dragFolder: boolean;
 }
