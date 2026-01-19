@@ -1,12 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { kv } from '@vercel/kv';
 import { put } from '@vercel/blob';
-
 import {
   drive,
   listFilesRecursive,
   createChunks,
-} from '../services/serverCommon.js';
+} from '../services/serverCommon';
 
 const FOLDER_ID =
   process.env.GOOGLE_DRIVE_FOLDER_ID ||
@@ -20,73 +19,72 @@ export default async function handler(
     return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
   }
 
-  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+  /* =========================
+   * DEBUG: 環境變數檢查
+   * ========================= */
+  const hasServiceAccount = !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const serviceAccountLength =
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.length || 0;
+
+  const hasApiKey = !!process.env.API_KEY;
+  const apiKeyLength = process.env.API_KEY?.length || 0;
+
+  console.log('[DEBUG][env]', {
+    hasServiceAccount,
+    serviceAccountLength,
+    hasApiKey,
+    apiKeyLength,
+    folderId: FOLDER_ID,
+  });
+
+  if (!hasServiceAccount || !hasApiKey) {
     return res.status(400).json({
       error: 'MISSING_ENV',
-      message: '缺少 GOOGLE_SERVICE_ACCOUNT_JSON',
+      debug: {
+        hasServiceAccount,
+        serviceAccountLength,
+        hasApiKey,
+        apiKeyLength,
+      },
     });
   }
 
   try {
-    // 1️⃣ 列出整個 Google Drive 資料夾（遞迴）
+    console.log('[DEBUG] start listFilesRecursive');
+
     const files = await listFilesRecursive(FOLDER_ID);
 
-    if (!files.length) {
-      return res.status(200).json({
-        ok: true,
-        message: '資料夾內沒有可同步的檔案',
-        count: 0,
-      });
-    }
+    console.log('[DEBUG] files fetched', {
+      count: files.length,
+      sample: files.slice(0, 2).map((f: any) => ({
+        id: f.id,
+        name: f.name,
+        mimeType: f.mimeType,
+      })),
+    });
 
-    let totalChunks = 0;
+    const chunks = createChunks(files);
 
-    // 2️⃣ 逐一處理檔案
-    for (const file of files) {
-      // 跳過 Google Docs 類型（如要支援可再擴充）
-      if (file.mimeType.startsWith('application/vnd.google-apps')) {
-        continue;
-      }
+    console.log('[DEBUG] chunks created', {
+      chunkCount: chunks.length,
+      firstChunkSize: chunks[0]?.length || 0,
+    });
 
-      // 下載檔案內容
-      const response = await drive.files.get(
-        { fileId: file.id, alt: 'media' },
-        { responseType: 'arraybuffer' }
-      );
+    await kv.set('drive:lastSyncAt', Date.now());
+    await kv.set('drive:fileCount', files.length);
 
-      const buffer = Buffer.from(response.data as ArrayBuffer);
-
-      // 3️⃣ 切 chunk（向量前處理）
-      const chunks = createChunks(buffer.toString('utf-8'), {
-        source: file.drivePath,
-        fileId: file.id,
-      });
-
-      // 4️⃣ 存入 KV（作為知識庫）
-      for (const chunk of chunks) {
-        await kv.set(chunk.id, chunk);
-      }
-
-      totalChunks += chunks.length;
-
-      // （選用）存原始檔案到 Blob
-      await put(`drive/${file.id}`, buffer, {
-        access: 'private',
-        contentType: file.mimeType,
-      });
-    }
+    console.log('[DEBUG] kv saved');
 
     return res.status(200).json({
       ok: true,
       files: files.length,
-      chunks: totalChunks,
-      message: 'Google Drive 知識庫同步完成',
+      chunks: chunks.length,
     });
   } catch (err: any) {
-    console.error('[api/sync] error:', err);
+    console.error('[api/sync][ERROR]', err);
     return res.status(500).json({
       error: 'SYNC_FAILED',
-      message: err?.message || '同步失敗',
+      message: err?.message,
     });
   }
 }
